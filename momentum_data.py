@@ -51,12 +51,12 @@ def cfg(key):
         except:
             return None
 
-def getSecurities(url, tickerPos=2, tablePos=4, sectorPosOffset=1, universe="N/A"):
+def getSecurities(url, tickerPos=2, tablePos=1, sectorPosOffset=1, universe="N/A"):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
 
     # Try finding tables with different possible class names
-    tables = soup.findAll('table', {'class': 'wikitable sortable'}) or soup.findAll('table', {'class': 'wikitable'})
+    tables = soup.find_all('table', {'class': 'wikitable sortable'}) or soup.find_all('table', {'class': 'wikitable'})
     print(f"Found {len(tables)} tables on {url} with class 'wikitable sortable' or 'wikitable'")  # Debug output
 
     if not tables:
@@ -79,8 +79,8 @@ def getSecurities(url, tickerPos=2, tablePos=4, sectorPosOffset=1, universe="N/A
             table = tables[tablePos - 1]
 
     secs = {}
-    for row in table.findAll('tr')[1:]:  # Skip header row
-        cells = row.findAll('td')
+    for row in table.find_all('tr')[1:]:  # Skip header row
+        cells = row.find_all('td')
         if len(cells) < max(tickerPos, tickerPos + sectorPosOffset):
             continue
         sec = {}
@@ -96,13 +96,13 @@ def getSecurities(url, tickerPos=2, tablePos=4, sectorPosOffset=1, universe="N/A
 def get_resolved_securities():
     tickers = {}
     if cfg("NQ100"):
-        tickers.update(getSecurities('https://en.wikipedia.org/wiki/Nasdaq-100', 2, 4, universe="Nasdaq 100"))
+        tickers.update(getSecurities('https://en.wikipedia.org/wiki/Nasdaq-100', 2, 1, universe="Nasdaq 100"))
     if cfg("SP500"):
-        tickers.update(getSecurities('http://en.wikipedia.org/wiki/List_of_S%26P_500_companies', sectorPosOffset=3, universe="S&P 500"))
+        tickers.update(getSecurities('http://en.wikipedia.org/wiki/List_of_S%26P_500_companies', 1, 1, sectorPosOffset=3, universe="S&P 500"))
     if cfg("SP400"):
-        tickers.update(getSecurities('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', 2, universe="S&P 400"))
+        tickers.update(getSecurities('https://en.wikipedia.org/wiki/List_of_S%26P_400_companies', 2, 1, universe="S&P 400"))
     if cfg("SP600"):
-        tickers.update(getSecurities('https://en.wikipedia.org/wiki/List_of_S%26P_600_companies', 2, universe="S&P 600"))
+        tickers.update(getSecurities('https://en.wikipedia.org/wiki/List_of_S%26P_600_companies', 2, 1, universe="S&P 600"))
     return tickers
 
 API_KEY = cfg("API_KEY")
@@ -170,7 +170,11 @@ def load_prices_from_tda(securities):
 
 def get_yf_data(security, start_date, end_date):
     escaped_ticker = security["ticker"].replace(".", "-")
+    print(f"Fetching data for ticker: {escaped_ticker}")  # Debug output
     df = yf.download(escaped_ticker, start=start_date, end=end_date)
+    if df.empty:
+        print(f"No data found for ticker {escaped_ticker}")
+        return None  # Return None for invalid tickers
     yahoo_response = df.to_dict()
     timestamps = list(yahoo_response["Open"].keys())
     timestamps = list(map(lambda timestamp: int(timestamp.timestamp()), timestamps))
@@ -206,6 +210,8 @@ def load_prices_from_yahoo(securities):
     for idx, security in enumerate(securities):
         r_start = time.time()
         ticker_data = get_yf_data(security, start_date, today)
+        if ticker_data is None:  # Skip invalid tickers
+            continue
         now = time.time()
         current_load_time = now - r_start
         load_times.append(current_load_time)
