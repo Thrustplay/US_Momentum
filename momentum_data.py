@@ -173,6 +173,9 @@ def get_yf_data(security, start_date, end_date):
     escaped_ticker = security["ticker"].replace(".", "-")
     print(f"Fetching data for ticker: {escaped_ticker}")  # Debug output
     df = yf.download(escaped_ticker, start=start_date, end=end_date)
+    # Flatten MultiIndex columns
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
     print(f"DataFrame columns: {list(df.columns)}")  # Debug output
     print(f"DataFrame empty: {df.empty}")  # Debug output
     if df.empty or 'Open' not in df.columns:
