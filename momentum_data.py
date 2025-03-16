@@ -18,7 +18,8 @@ import numpy as np
 from datetime import date
 from datetime import datetime
 
-DIR = os.path.dirname(os.path.realpath(__file__))
+# Use the current working directory in Colab
+DIR = os.getcwd()
 
 if not os.path.exists(os.path.join(DIR, 'data')):
     os.makedirs(os.path.join(DIR, 'data'))
@@ -34,7 +35,7 @@ except yaml.YAMLError as exc:
         print(exc)
 
 try:
-    with open('config.yaml', 'r') as stream:
+    with open(os.path.join(DIR, 'config.yaml'), 'r') as stream:
         config = yaml.safe_load(stream)
 except FileNotFoundError:
     config = None
