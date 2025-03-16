@@ -88,6 +88,7 @@ def getSecurities(url, tickerPos=2, tablePos=1, sectorPosOffset=1, universe="N/A
         sec["sector"] = cells[tickerPos-1 + sectorPosOffset].text.strip()
         sec["universe"] = universe
         secs[sec["ticker"]] = sec
+        print(f"Extracted: ticker={sec['ticker']}, sector={sec['sector']}, universe={sec['universe']}")  # Debug output
 
     with open(os.path.join(DIR, "tmp", "tickers.pickle"), "wb") as f:
         pickle.dump(secs, f)
@@ -172,8 +173,10 @@ def get_yf_data(security, start_date, end_date):
     escaped_ticker = security["ticker"].replace(".", "-")
     print(f"Fetching data for ticker: {escaped_ticker}")  # Debug output
     df = yf.download(escaped_ticker, start=start_date, end=end_date)
-    if df.empty:
-        print(f"No data found for ticker {escaped_ticker}")
+    print(f"DataFrame columns: {list(df.columns)}")  # Debug output
+    print(f"DataFrame empty: {df.empty}")  # Debug output
+    if df.empty or 'Open' not in df.columns:
+        print(f"No valid data found for ticker {escaped_ticker}")
         return None  # Return None for invalid tickers
     yahoo_response = df.to_dict()
     timestamps = list(yahoo_response["Open"].keys())
