@@ -8,6 +8,7 @@ import os
 import pandas_datareader.data as web
 import pickle
 import requests
+from bs4 import BeautifulSoup
 import yaml
 import yfinance as yf
 import pandas as pd
@@ -52,6 +53,20 @@ def cfg(key):
 def getSecurities(url, tickerPos = 1, tablePos = 1, sectorPosOffset = 1, universe = "N/A"):
     resp = requests.get(url)
     soup = bs.BeautifulSoup(resp.text, 'lxml')
+    url = 'https://en.wikipedia.org/wiki/Nasdaq-100'
+response = requests.get(url)
+soup = BeautifulSoup(response.text, 'html.parser')
+
+# Try multiple class names or use pandas for robustness
+tables = soup.findAll('table', {'class': 'sortable'}) or soup.findAll('table', {'class': 'wikitable sortable'})
+if not tables:
+    # Fall back to pandas if BeautifulSoup fails
+    tables = pd.read_html(url)
+    if not tables:
+        raise ValueError("No tables found on the webpage. Check the URL or structure.")
+    table = tables[tablePos - 1] if tablePos - 1 < len(tables) else tables[0]
+else:
+    table = tables[tablePos - 1] if tablePos - 1 < len(tables) else tables[0]
     table = soup.findAll('table', {'class': 'wikitable sortable'})[tablePos-1]
     secs = {}
     for row in table.findAll('tr')[tablePos:]:
