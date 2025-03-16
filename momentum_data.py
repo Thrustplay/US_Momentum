@@ -50,8 +50,7 @@ def cfg(key):
         except:
             return None
 
-def getSecurities(url, tickerPos=1, tablePos=1, sectorPosOffset=1, universe="N/A"):
-    # Fetch the webpage
+def getSecurities(url, tickerPos=2, tablePos=4, sectorPosOffset=1, universe="N/A"):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
 
@@ -60,33 +59,28 @@ def getSecurities(url, tickerPos=1, tablePos=1, sectorPosOffset=1, universe="N/A
     print(f"Found {len(tables)} tables on {url} with class 'wikitable sortable' or 'wikitable'")  # Debug output
 
     if not tables:
-        # Fall back to pandas if BeautifulSoup fails
         print(f"No tables found with BeautifulSoup on {url}. Falling back to pandas.read_html.")
         try:
             tables = pd.read_html(url)
             if not tables:
                 raise ValueError(f"No tables found on {url}. Check the URL or structure.")
-            # Use the table at tablePos-1, or the first table if index is out of range
             table = tables[tablePos - 1] if tablePos - 1 < len(tables) else tables[0]
-            # If using pandas, convert to BeautifulSoup table for consistent parsing
             table_html = str(table.to_html())
             soup = BeautifulSoup(table_html, 'html.parser')
             table = soup.find('table')
         except Exception as e:
             raise ValueError(f"Failed to fetch tables with pandas on {url}: {str(e)}")
     else:
-        # Use the table at tablePos-1, or the first table if index is out of range
         if tablePos - 1 >= len(tables):
             print(f"tablePos ({tablePos}) out of range for {len(tables)} tables. Using the first table.")
             table = tables[0]
         else:
             table = tables[tablePos - 1]
 
-    # Parse the table into securities
     secs = {}
     for row in table.findAll('tr')[1:]:  # Skip header row
         cells = row.findAll('td')
-        if len(cells) < max(tickerPos, tickerPos + sectorPosOffset):  # Ensure enough columns
+        if len(cells) < max(tickerPos, tickerPos + sectorPosOffset):
             continue
         sec = {}
         sec["ticker"] = cells[tickerPos-1].text.strip()
@@ -94,7 +88,6 @@ def getSecurities(url, tickerPos=1, tablePos=1, sectorPosOffset=1, universe="N/A
         sec["universe"] = universe
         secs[sec["ticker"]] = sec
 
-    # Save to pickle file
     with open(os.path.join(DIR, "tmp", "tickers.pickle"), "wb") as f:
         pickle.dump(secs, f)
     return secs
@@ -102,7 +95,7 @@ def getSecurities(url, tickerPos=1, tablePos=1, sectorPosOffset=1, universe="N/A
 def get_resolved_securities():
     tickers = {}
     if cfg("NQ100"):
-        tickers.update(getSecurities('https://en.wikipedia.org/wiki/Nasdaq-100', 2, 3, universe="Nasdaq 100"))
+        tickers.update(getSecurities('https://en.wikipedia.org/wiki/Nasdaq-100', 2, 4, universe="Nasdaq 100"))
     if cfg("SP500"):
         tickers.update(getSecurities('http://en.wikipedia.org/wiki/List_of_S%26P_500_companies', sectorPosOffset=3, universe="S&P 500"))
     if cfg("SP400"):
@@ -126,7 +119,6 @@ def enrich_ticker_data(ticker_response, security):
     ticker_response["universe"] = security["universe"]
 
 def tda_params(apikey, period_type="year", period=1, frequency_type="daily", frequency=1):
-    """Returns tuple of api get params. Uses clenow default values."""
     return (
            ("apikey", apikey),
            ("periodType", period_type),
@@ -138,10 +130,10 @@ def tda_params(apikey, period_type="year", period=1, frequency_type="daily", fre
 def print_data_progress(ticker, universe, idx, securities, error_text, elapsed_s, remaining_s):
     dt_ref = datetime.fromtimestamp(0)
     dt_e = datetime.fromtimestamp(elapsed_s)
-    elapsed = dateutil.relativedelta.relativedelta (dt_e, dt_ref)
+    elapsed = dateutil.relativedelta.relativedelta(dt_e, dt_ref)
     if remaining_s and not np.isnan(remaining_s):
         dt_r = datetime.fromtimestamp(remaining_s)
-        remaining = dateutil.relativedelta.relativedelta (dt_r, dt_ref)
+        remaining = dateutil.relativedelta.relativedelta(dt_r, dt_ref)
         remaining_string = f'{remaining.minutes}m {remaining.seconds}s'
     else:
         remaining_string = "?"
@@ -154,7 +146,7 @@ def get_remaining_seconds(all_load_times, idx, len):
 
 def load_prices_from_tda(securities):
     print("*** Loading Stocks from TD Ameritrade ***")
-    headers = {"Cache-Control" : "no-cache"}
+    headers = {"Cache-Control": "no-cache"}
     params = tda_params(API_KEY)
     tickers_dict = {}
     start = time.time()
@@ -162,11 +154,7 @@ def load_prices_from_tda(securities):
 
     for idx, sec in enumerate(securities):
         r_start = time.time()
-        response = requests.get(
-                TD_API % sec["ticker"],
-                params=params,
-                headers=headers
-        )
+        response = requests.get(TD_API % sec["ticker"], params=params, headers=headers)
         now = time.time()
         current_load_time = now - r_start
         load_times.append(current_load_time)
@@ -180,7 +168,7 @@ def load_prices_from_tda(securities):
     create_price_history_file(tickers_dict)
 
 def get_yf_data(security, start_date, end_date):
-    escaped_ticker = security["ticker"].replace(".","-")
+    escaped_ticker = security["ticker"].replace(".", "-")
     df = yf.download(escaped_ticker, start=start_date, end=end_date)
     yahoo_response = df.to_dict()
     timestamps = list(yahoo_response["Open"].keys())
