@@ -50,31 +50,51 @@ def cfg(key):
         except:
             return None
 
-def getSecurities(url, tickerPos = 1, tablePos = 1, sectorPosOffset = 1, universe = "N/A"):
-    resp = requests.get(url)
-    soup = bs.BeautifulSoup(resp.text, 'lxml')
-    url = 'https://en.wikipedia.org/wiki/Nasdaq-100'
-response = requests.get(url)
-soup = BeautifulSoup(response.text, 'html.parser')
+def getSecurities(url, tickerPos=1, tablePos=1, sectorPosOffset=1, universe="N/A"):
+    # Fetch the webpage
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
 
-# Try multiple class names or use pandas for robustness
-tables = soup.findAll('table', {'class': 'sortable'}) or soup.findAll('table', {'class': 'wikitable sortable'})
-if not tables:
-    # Fall back to pandas if BeautifulSoup fails
-    tables = pd.read_html(url)
+    # Try finding tables with different possible class names
+    tables = soup.findAll('table', {'class': 'wikitable sortable'}) or soup.findAll('table', {'class': 'wikitable'})
+    print(f"Found {len(tables)} tables on {url} with class 'wikitable sortable' or 'wikitable'")  # Debug output
+
     if not tables:
-        raise ValueError("No tables found on the webpage. Check the URL or structure.")
-    table = tables[tablePos - 1] if tablePos - 1 < len(tables) else tables[0]
-else:
-    table = tables[tablePos - 1] if tablePos - 1 < len(tables) else tables[0]
-    table = soup.findAll('table', {'class': 'wikitable sortable'})[tablePos-1]
+        # Fall back to pandas if BeautifulSoup fails
+        print(f"No tables found with BeautifulSoup on {url}. Falling back to pandas.read_html.")
+        try:
+            tables = pd.read_html(url)
+            if not tables:
+                raise ValueError(f"No tables found on {url}. Check the URL or structure.")
+            # Use the table at tablePos-1, or the first table if index is out of range
+            table = tables[tablePos - 1] if tablePos - 1 < len(tables) else tables[0]
+            # If using pandas, convert to BeautifulSoup table for consistent parsing
+            table_html = str(table.to_html())
+            soup = BeautifulSoup(table_html, 'html.parser')
+            table = soup.find('table')
+        except Exception as e:
+            raise ValueError(f"Failed to fetch tables with pandas on {url}: {str(e)}")
+    else:
+        # Use the table at tablePos-1, or the first table if index is out of range
+        if tablePos - 1 >= len(tables):
+            print(f"tablePos ({tablePos}) out of range for {len(tables)} tables. Using the first table.")
+            table = tables[0]
+        else:
+            table = tables[tablePos - 1]
+
+    # Parse the table into securities
     secs = {}
-    for row in table.findAll('tr')[tablePos:]:
+    for row in table.findAll('tr')[1:]:  # Skip header row
+        cells = row.findAll('td')
+        if len(cells) < max(tickerPos, tickerPos + sectorPosOffset):  # Ensure enough columns
+            continue
         sec = {}
-        sec["ticker"] = row.findAll('td')[tickerPos-1].text.strip()
-        sec["sector"] = row.findAll('td')[tickerPos-1+sectorPosOffset].text.strip()
+        sec["ticker"] = cells[tickerPos-1].text.strip()
+        sec["sector"] = cells[tickerPos-1 + sectorPosOffset].text.strip()
         sec["universe"] = universe
         secs[sec["ticker"]] = sec
+
+    # Save to pickle file
     with open(os.path.join(DIR, "tmp", "tickers.pickle"), "wb") as f:
         pickle.dump(secs, f)
     return secs
@@ -159,34 +179,33 @@ def load_prices_from_tda(securities):
 
     create_price_history_file(tickers_dict)
 
-
 def get_yf_data(security, start_date, end_date):
-        escaped_ticker = security["ticker"].replace(".","-")
-        df = yf.download(escaped_ticker, start=start_date, end=end_date)
-        yahoo_response = df.to_dict()
-        timestamps = list(yahoo_response["Open"].keys())
-        timestamps = list(map(lambda timestamp: int(timestamp.timestamp()), timestamps))
-        opens = list(yahoo_response["Open"].values())
-        closes = list(yahoo_response["Close"].values())
-        lows = list(yahoo_response["Low"].values())
-        highs = list(yahoo_response["High"].values())
-        volumes = list(yahoo_response["Volume"].values())
-        ticker_data = {}
-        candles = []
+    escaped_ticker = security["ticker"].replace(".","-")
+    df = yf.download(escaped_ticker, start=start_date, end=end_date)
+    yahoo_response = df.to_dict()
+    timestamps = list(yahoo_response["Open"].keys())
+    timestamps = list(map(lambda timestamp: int(timestamp.timestamp()), timestamps))
+    opens = list(yahoo_response["Open"].values())
+    closes = list(yahoo_response["Close"].values())
+    lows = list(yahoo_response["Low"].values())
+    highs = list(yahoo_response["High"].values())
+    volumes = list(yahoo_response["Volume"].values())
+    ticker_data = {}
+    candles = []
 
-        for i in range(0, len(opens)):
-            candle = {}
-            candle["open"] = opens[i]
-            candle["close"] = closes[i]
-            candle["low"] = lows[i]
-            candle["high"] = highs[i]
-            candle["volume"] = volumes[i]
-            candle["datetime"] = timestamps[i]
-            candles.append(candle)
+    for i in range(0, len(opens)):
+        candle = {}
+        candle["open"] = opens[i]
+        candle["close"] = closes[i]
+        candle["low"] = lows[i]
+        candle["high"] = highs[i]
+        candle["volume"] = volumes[i]
+        candle["datetime"] = timestamps[i]
+        candles.append(candle)
 
-        ticker_data["candles"] = candles
-        enrich_ticker_data(ticker_data, security)
-        return ticker_data
+    ticker_data["candles"] = candles
+    enrich_ticker_data(ticker_data, security)
+    return ticker_data
 
 def load_prices_from_yahoo(securities):
     print("*** Loading Stocks from Yahoo Finance ***")
@@ -201,7 +220,7 @@ def load_prices_from_yahoo(securities):
         now = time.time()
         current_load_time = now - r_start
         load_times.append(current_load_time)
-        remaining_seconds = remaining_seconds = get_remaining_seconds(load_times, idx, len(securities))
+        remaining_seconds = get_remaining_seconds(load_times, idx, len(securities))
         print_data_progress(security["ticker"], security["universe"], idx, securities, "", time.time() - start, remaining_seconds)
         tickers_dict[security["ticker"]] = ticker_data
     create_price_history_file(tickers_dict)
@@ -211,7 +230,6 @@ def save_data(source, securities):
         load_prices_from_yahoo(securities)
     elif source == "TD_AMERITRADE":
         load_prices_from_tda(securities)
-
 
 def main():
     save_data(DATA_SOURCE, SECURITIES)
