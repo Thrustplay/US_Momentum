@@ -124,7 +124,7 @@ DATA_SOURCE = cfg("DATA_SOURCE")
 
 def create_price_history_file(tickers_dict):
     with open(PRICE_DATA_OUTPUT, "w") as fp:
-        json.dump(tickers_dict, fp, cls=NumpyEncoder)  # Use custom encoder
+        json.dump(tickers_dict, fp, cls=NumpyEncoder)
 
 def enrich_ticker_data(ticker_response, security):
     ticker_response["sector"] = security["sector"]
@@ -189,17 +189,16 @@ def get_yf_data(security, start_date, end_date):
         required_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
         df = df[required_columns]
 
-        # Convert timestamps to native Python int
         timestamps = [int(ts.timestamp()) for ts in df.index]
         ticker_data = {
             "candles": [
                 {
-                    "open": float(df['Open'].iloc[i]),    # Ensure float
-                    "close": float(df['Close'].iloc[i]),  # Ensure float
-                    "low": float(df['Low'].iloc[i]),      # Ensure float
-                    "high": float(df['High'].iloc[i]),    # Ensure float
-                    "volume": int(df['Volume'].iloc[i]),  # Ensure native int
-                    "datetime": timestamps[i]             # Already an int
+                    "open": float(df['Open'].iloc[i].iloc[0]),    # Access scalar value
+                    "close": float(df['Close'].iloc[i].iloc[0]),  # Access scalar value
+                    "low": float(df['Low'].iloc[i].iloc[0]),      # Access scalar value
+                    "high": float(df['High'].iloc[i].iloc[0]),    # Access scalar value
+                    "volume": int(df['Volume'].iloc[i].iloc[0]),  # Access scalar value
+                    "datetime": timestamps[i]
                 }
                 for i in range(len(df))
             ]
